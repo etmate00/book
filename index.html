@@ -1,0 +1,2621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>도서관 좌석 및 스터디룸 예약 시스템 | Smart Library</title>
+  <meta name="description" content="Google Apps Script(GAS) 및 구글 스프레드시트 연동 도서관 좌석 및 스터디룸 실시간 예약 시스템" />
+  <meta property="og:title" content="도서관 좌석 및 스터디룸 예약 시스템" />
+  <meta property="og:description" content="실시간 좌석 현황 조회 및 간편 예약 관리 시스템" />
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              500: '#4f46e5',
+              600: '#4338ca',
+              700: '#3730a3',
+              800: '#312e81',
+              900: '#1e1b4b'
+            }
+          },
+          fontFamily: {
+            sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Roboto', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    .modal-backdrop {
+      background-color: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- ================= TOP NAVIGATION BAR ================= -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        
+        <!-- Logo & Title -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-200">
+            <i class="fa-solid fa-book-bookmark text-lg"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-lg font-bold text-slate-900 tracking-tight">스마트 도서관 예약 시스템</h1>
+              <span id="systemModeBadge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="systemModeText">데모 모드</span>
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 hidden sm:block">실시간 좌석 현황 조회 및 스터디룸 예약 포털</p>
+          </div>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Refresh Button -->
+          <button id="btnRefresh" title="새로고침" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors">
+            <i class="fa-solid fa-rotate-right text-base"></i>
+          </button>
+
+          <!-- GAS API Settings Button -->
+          <button id="btnOpenSettings" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">
+            <i class="fa-solid fa-cloud-bolt text-indigo-500"></i>
+            <span class="hidden md:inline">API 연동 설정</span>
+          </button>
+
+          <!-- GAS Code Guide Button -->
+          <button id="btnOpenGasGuide" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all">
+            <i class="fa-solid fa-code text-indigo-600"></i>
+            <span class="hidden md:inline">GAS 소스코드</span>
+          </button>
+
+          <!-- My Reservations Button -->
+          <button id="btnOpenMyReservations" class="inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm hover:shadow transition-all">
+            <i class="fa-solid fa-calendar-check"></i>
+            <span>내 예약 조회</span>
+            <span id="myReservationCountBadge" class="hidden px-1.5 py-0.2 text-[10px] font-bold bg-white text-indigo-600 rounded-full">0</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN CONTENT WRAPPER ================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- ================= CONTROLS & STATS BAR ================= -->
+    <section class="bg-white rounded-2xl p-4 sm:p-6 shadow-xs border border-slate-200/90 space-y-5">
+      
+      <!-- Top Row: Date Selector & Quick Buttons -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        
+        <!-- Date Selector -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div class="flex items-center gap-2 bg-slate-100/90 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 font-medium text-sm">
+            <i class="fa-regular fa-calendar-days text-indigo-600"></i>
+            <span class="text-xs text-slate-500">예약 일자:</span>
+            <input type="date" id="selectedDateInput" class="bg-transparent font-semibold text-slate-900 text-sm focus:outline-none cursor-pointer" />
+          </div>
+
+          <!-- Quick Date Buttons -->
+          <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            <button type="button" class="quick-date-btn px-2.5 py-1 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition-all" data-offset="0">오늘</button>
+            <button type="button" class="quick-date-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-all" data-offset="1">내일</button>
+            <button type="button" class="quick-date-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-all" data-offset="2">모레</button>
+          </div>
+
+          <!-- Operating Hours Badge -->
+          <span class="text-xs text-slate-500 hidden lg:inline-flex items-center gap-1.5 ml-2">
+            <i class="fa-regular fa-clock text-slate-400"></i>
+            운영 시간: 08:00 ~ 22:00 (1시간 단위 예약)
+          </span>
+        </div>
+
+        <!-- Quick Summary Counters -->
+        <div class="flex items-center gap-4 text-xs sm:text-sm">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span class="text-slate-500">예약 가능:</span>
+            <span id="statAvailableSeats" class="font-bold text-emerald-700">0</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+            <span class="text-slate-500">일부 이용:</span>
+            <span id="statPartialSeats" class="font-bold text-amber-600">0</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+            <span class="text-slate-500">예약 마감:</span>
+            <span id="statFullSeats" class="font-bold text-rose-600">0</span>
+          </div>
+          <div class="h-4 w-px bg-slate-200"></div>
+          <div class="text-slate-500">
+            총 <span id="statTotalSeats" class="font-bold text-slate-800">0</span>석
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Row: Category & Floor Tabs & Search / View Mode -->
+      <div class="space-y-3">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          
+          <!-- Category Filter Tabs -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none" id="categoryFilterContainer">
+            <button class="category-tab active px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-indigo-600 text-white shadow-xs transition-all whitespace-nowrap" data-category="ALL">
+              전체 공간 <span id="tabCountALL" class="ml-1 text-xs opacity-80">(0)</span>
+            </button>
+            <button class="category-tab px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap" data-category="일반열람실">
+              일반열람실 <span id="tabCountGeneral" class="ml-1 text-xs text-slate-400">(0)</span>
+            </button>
+            <button class="category-tab px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap" data-category="노트북존">
+              노트북존 <span id="tabCountLaptop" class="ml-1 text-xs text-slate-400">(0)</span>
+            </button>
+            <button class="category-tab px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap" data-category="스터디룸">
+              스터디룸 <span id="tabCountStudy" class="ml-1 text-xs text-slate-400">(0)</span>
+            </button>
+          </div>
+
+          <!-- Search & View Mode Switcher -->
+          <div class="flex items-center gap-2 sm:gap-3">
+            <!-- Search input -->
+            <div class="relative flex-1 sm:w-60">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+              <input type="text" id="seatSearchInput" placeholder="좌석명, 층수, 편의시설 검색..." class="w-full pl-8 pr-3 py-1.5 text-xs sm:text-sm bg-slate-100 focus:bg-white border border-transparent focus:border-indigo-400 rounded-xl focus:outline-none transition-all placeholder:text-slate-400" />
+            </div>
+
+            <!-- Status Only Toggle -->
+            <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none whitespace-nowrap bg-slate-100 px-2.5 py-2 rounded-xl hover:bg-slate-200 transition-all">
+              <input type="checkbox" id="filterAvailableOnly" class="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
+              <span>가능 좌석만</span>
+            </label>
+
+            <!-- View Mode Toggle: Grid vs Timeline -->
+            <div class="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/60">
+              <button id="btnViewGrid" title="카드 그리드 뷰" class="p-1.5 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition-all">
+                <i class="fa-solid fa-grip"></i>
+              </button>
+              <button id="btnViewTimeline" title="시간대 타임라인 매트릭스" class="p-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-900 transition-all">
+                <i class="fa-solid fa-chart-gantt"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Floor Filter Sub-row (Reflecting new Floor column) -->
+        <div class="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+          <span class="text-slate-500 font-semibold flex items-center gap-1 text-[11px] whitespace-nowrap">
+            <i class="fa-solid fa-layer-group text-indigo-500"></i> 위치/층수:
+          </span>
+          <div class="flex items-center gap-1 overflow-x-auto scrollbar-none" id="floorFilterContainer">
+            <button type="button" class="floor-tab active px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-xs transition-all whitespace-nowrap" data-floor="ALL">전체 층</button>
+            <button type="button" class="floor-tab px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap" data-floor="1층">1층 (메인열람실)</button>
+            <button type="button" class="floor-tab px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap" data-floor="2층">2층 (노트북존)</button>
+            <button type="button" class="floor-tab px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap" data-floor="3층">3층 (스터디존)</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================= SEATS DISPLAY CONTAINER ================= -->
+    <section>
+      
+      <!-- Loading Indicator -->
+      <div id="seatsLoading" class="hidden py-16 text-center">
+        <div class="inline-flex flex-col items-center gap-3">
+          <div class="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+          <p class="text-sm font-medium text-slate-600">좌석 및 예약 현황을 불러오는 중입니다...</p>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="seatsEmpty" class="hidden py-16 text-center bg-white rounded-2xl border border-slate-200/80">
+        <div class="max-w-sm mx-auto space-y-3">
+          <div class="w-12 h-12 mx-auto rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
+            <i class="fa-regular fa-folder-open"></i>
+          </div>
+          <h3 class="font-semibold text-slate-800">조회된 좌석이 없습니다</h3>
+          <p class="text-xs text-slate-500">선택한 분류 또는 검색어에 일치하는 좌석이 없습니다. 필터를 변경해보세요.</p>
+          <button id="btnResetFilters" class="px-3.5 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all">
+            필터 초기화
+          </button>
+        </div>
+      </div>
+
+      <!-- GRID VIEW: Cards of Seats -->
+      <div id="seatsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <!-- Rendered dynamically via JavaScript -->
+      </div>
+
+      <!-- TIMELINE MATRIX VIEW: Seat vs Time Table -->
+      <div id="seatsTimelineContainer" class="hidden bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div class="p-4 border-b border-slate-200/80 flex items-center justify-between">
+          <div>
+            <h3 class="font-bold text-slate-900 text-sm">시간대별 좌석 현황 매트릭스</h3>
+            <p class="text-xs text-slate-500">08:00부터 22:00까지 빈 시간대(초록색)를 클릭하면 즉시 예약창이 열립니다.</p>
+          </div>
+          <div class="flex items-center gap-3 text-xs">
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-100 border border-emerald-400 inline-block"></span> 이용 가능</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-rose-500 inline-block"></span> 예약 완료</span>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-xs text-left" id="timelineTable">
+            <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+              <tr id="timelineHeaderRow">
+                <th class="p-3 sticky left-0 bg-slate-50 z-10 w-44 border-r border-slate-200">좌석 정보</th>
+                <!-- 08 to 21 hours populated by JS -->
+              </tr>
+            </thead>
+            <tbody id="timelineBody" class="divide-y divide-slate-100 font-medium">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="bg-white border-t border-slate-200 py-6 mt-12 text-center text-xs text-slate-500 space-y-2">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-graduation-cap text-indigo-500"></i>
+        <span class="font-medium text-slate-700">스마트 도서관 좌석 및 스터디룸 예약 시스템</span>
+      </div>
+      <div>
+        <span>구글 앱스 스크립트(GAS) Web App & Google Sheets API 기반 연동</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ================= MODAL: RESERVATION POPUP ================= -->
+  <div id="reservationModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="modal-backdrop fixed inset-0 transition-opacity"></div>
+    <div class="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden z-10 max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-indigo-300">
+            <i class="fa-solid fa-calendar-plus text-base"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base leading-tight">좌석 예약 신청</h3>
+            <p class="text-xs text-slate-300">신청 정보를 입력하고 시간을 선택해주세요</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="p-6 overflow-y-auto space-y-5 text-sm">
+        
+        <!-- Selected Seat Summary Card -->
+        <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span id="resModalSeatCategory" class="px-2 py-0.5 text-[11px] font-bold rounded-md bg-indigo-600 text-white">일반열람실</span>
+                <span id="resModalSeatFloor" class="px-2 py-0.5 text-[11px] font-semibold rounded-md bg-slate-200 text-slate-700">1층 메인열람실</span>
+                <h4 id="resModalSeatName" class="font-bold text-slate-900 text-base">열람실 101번</h4>
+              </div>
+              <div class="flex items-center gap-3 text-xs text-slate-500 pt-0.5">
+                <span id="resModalSeatCapacity"><i class="fa-regular fa-user mr-1 text-indigo-500"></i>정원 1인</span>
+                <span><i class="fa-regular fa-calendar mr-1 text-indigo-500"></i><span id="resModalSelectedDate">2026-10-09</span></span>
+                <span id="resModalSeatMaxHours" class="text-indigo-600 font-semibold"><i class="fa-regular fa-clock mr-1"></i>최대 4시간 이용</span>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <span id="resModalSeatStatusBadge" class="inline-block px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-100 text-emerald-800">예약 신청 가능</span>
+            </div>
+          </div>
+
+          <!-- Amenities Tags in Modal -->
+          <div id="resModalAmenitiesContainer" class="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-indigo-100/70 text-[11px] text-slate-600">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Reservation Form -->
+        <form id="reservationForm" class="space-y-4">
+          <input type="hidden" id="formSeatId" />
+
+          <!-- Time Range Selector -->
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-700">
+              <i class="fa-regular fa-clock text-indigo-600 mr-1"></i>이용 시간 선택 (08:00 ~ 22:00)
+            </label>
+
+            <!-- Visual Slots Bar of selected seat -->
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <div class="flex items-center justify-between text-xs text-slate-500">
+                <span>당일 예약 현황 (시간대별)</span>
+                <span class="text-rose-600 font-medium">■ 예약 불가</span>
+              </div>
+              <div id="modalDayTimeSlots" class="grid grid-cols-7 gap-1">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+
+            <!-- Start Time & End Time Selects -->
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label for="formStartTime" class="block text-xs font-semibold text-slate-600 mb-1">시작 시간</label>
+                <select id="formStartTime" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all font-medium">
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+              <div>
+                <label for="formEndTime" class="block text-xs font-semibold text-slate-600 mb-1">종료 시간</label>
+                <select id="formEndTime" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all font-medium">
+                  <!-- Populated by JS -->
+                </select>
+              </div>
+            </div>
+
+            <!-- Overlap Warning Message Banner -->
+            <div id="timeOverlapWarning" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+              <i class="fa-solid fa-triangle-exclamation text-rose-500 mt-0.5"></i>
+              <span id="timeOverlapWarningText">선택하신 시간대에 이미 다른 예약이 존재합니다. 다른 시간을 선택해주세요.</span>
+            </div>
+
+            <!-- Duration Info -->
+            <div class="flex items-center justify-between text-xs text-slate-500 px-1">
+              <span>총 이용 시간: <strong id="calculatedDuration" class="text-indigo-600 font-bold">2시간</strong></span>
+              <span id="resModalMaxDurationNotice" class="text-slate-400">1회 최대 4시간까지 신청 가능</span>
+            </div>
+          </div>
+
+          <!-- Applicant Information -->
+          <div class="space-y-3 pt-2 border-t border-slate-100">
+            <h5 class="text-xs font-bold text-slate-700">예약자 정보</h5>
+
+            <div>
+              <label for="formUserName" class="block text-xs font-semibold text-slate-600 mb-1">이름 (성명) *</label>
+              <div class="relative">
+                <i class="fa-regular fa-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="text" id="formUserName" required placeholder="홍길동" class="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 focus:bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all" />
+              </div>
+            </div>
+
+            <div>
+              <label for="formUserEmail" class="block text-xs font-semibold text-slate-600 mb-1">이메일 주소 (예약 조회 및 확인용) *</label>
+              <div class="relative">
+                <i class="fa-regular fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="email" id="formUserEmail" required placeholder="user@example.com" class="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 focus:bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all" />
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1">예약 취소 및 내 예약 조회 시 사용되므로 정확히 입력해주세요.</p>
+            </div>
+
+            <div>
+              <label for="formUserPhone" class="block text-xs font-semibold text-slate-600 mb-1">연락처 *</label>
+              <div class="relative">
+                <i class="fa-solid fa-phone absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="tel" id="formUserPhone" required placeholder="010-1234-5678" class="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 focus:bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all" />
+              </div>
+            </div>
+
+            <!-- Agreement Checkbox -->
+            <label class="flex items-start gap-2 pt-2 cursor-pointer select-none">
+              <input type="checkbox" id="formAgreeTerms" required checked class="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 mt-0.5" />
+              <span class="text-xs text-slate-600">
+                도서관 이용 수칙(정시 퇴실, 소음 자제, 노쇼 방지 등)을 준수할 것에 동의합니다.
+              </span>
+            </label>
+          </div>
+
+          <!-- Buttons -->
+          <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+            <button type="button" class="modal-close-btn px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-all">
+              취소
+            </button>
+            <button type="submit" id="btnSubmitReservation" class="inline-flex items-center gap-2 px-5 py-2 text-xs sm:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-xl shadow-md shadow-indigo-200 transition-all">
+              <span id="submitBtnSpinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span id="submitBtnText">예약 확정하기</span>
+            </button>
+          </div>
+
+        </form>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= MODAL: MY RESERVATIONS ================= -->
+  <div id="myReservationsModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="modal-backdrop fixed inset-0 transition-opacity"></div>
+    <div class="relative bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden z-10 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-indigo-300">
+            <i class="fa-solid fa-list-check text-base"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base leading-tight">내 예약 내역 조회</h3>
+            <p class="text-xs text-slate-400">등록하신 이메일로 예약 현황을 확인하고 취소할 수 있습니다</p>
+          </div>
+        </div>
+        <button type="button" class="my-res-close-btn p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Search By Email Bar -->
+      <div class="p-4 sm:p-6 bg-slate-50 border-b border-slate-200 space-y-3">
+        <form id="myResLookupForm" class="flex items-center gap-2">
+          <div class="relative flex-1">
+            <i class="fa-regular fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="email" id="myResEmailInput" required placeholder="예약 시 입력한 이메일 주소..." class="w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all" />
+          </div>
+          <button type="submit" id="btnLookupMyRes" class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span>조회</span>
+          </button>
+        </form>
+
+        <!-- Stored Email Quick Chip -->
+        <div id="storedEmailContainer" class="hidden flex items-center gap-2 text-xs text-slate-500">
+          <span>최근 조회:</span>
+          <button type="button" id="btnQuickSelectStoredEmail" class="px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-all">
+            <span id="storedEmailText">user@example.com</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Reservations List Content Area (Scrollable) -->
+      <div class="p-6 overflow-y-auto flex-1 space-y-3" id="myResListContent">
+        <div class="py-12 text-center text-slate-400">
+          <i class="fa-regular fa-paper-plane text-3xl mb-2 text-slate-300"></i>
+          <p class="text-sm font-medium text-slate-600">이메일을 입력하고 [조회] 버튼을 눌러주세요</p>
+          <p class="text-xs text-slate-400 mt-1">최근 생성된 예약 내역이 실시간으로 조회됩니다.</p>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+        <span>* 지난 예약은 취소할 수 없습니다.</span>
+        <button type="button" class="my-res-close-btn px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition-all">닫기</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CONFIRM CANCEL RESERVATION ================= -->
+  <div id="confirmCancelModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="modal-backdrop fixed inset-0 transition-opacity"></div>
+    <div class="relative bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 p-6 z-10 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+      <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-xl">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="text-center space-y-1">
+        <h3 class="font-bold text-slate-900 text-lg">예약을 취소하시겠습니까?</h3>
+        <p class="text-xs text-slate-500">취소 후에는 복구할 수 없으며 다른 이용자가 예약할 수 있게 됩니다.</p>
+      </div>
+      
+      <!-- Target Reservation Details Card -->
+      <div id="cancelTargetDetails" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="flex items-center justify-center gap-3 pt-2">
+        <button type="button" id="btnDismissCancelModal" class="flex-1 py-2 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">
+          아니오, 유지합니다
+        </button>
+        <button type="button" id="btnConfirmCancelModal" class="flex-1 py-2 text-xs sm:text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5">
+          <span id="cancelSpinner" class="hidden w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+          <span>네, 취소합니다</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: GAS SETTINGS ================= -->
+  <div id="settingsModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="modal-backdrop fixed inset-0 transition-opacity"></div>
+    <div class="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-10 max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+            <i class="fa-solid fa-cloud-bolt"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base">Google Apps Script API 설정</h3>
+            <p class="text-xs text-slate-400">구글 시트 백엔드 Web App URL 연동</p>
+          </div>
+        </div>
+        <button type="button" class="settings-close-btn p-1.5 text-slate-400 hover:text-white rounded-lg">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-5 text-xs text-slate-600 overflow-y-auto">
+        <div class="space-y-1.5">
+          <label for="gasApiUrlInput" class="block font-bold text-slate-800 text-sm">
+            GAS Web App 배포 URL
+          </label>
+          <input type="url" id="gasApiUrlInput" placeholder="https://script.google.com/macros/s/AKfycb.../exec" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+          <p class="text-[11px] text-slate-500">
+            * 배포 시 <strong>[액세스 권한: 모든 사용자 (Anyone)]</strong>로 설정된 웹 앱 URL이어야 합니다.
+          </p>
+        </div>
+
+        <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 space-y-1">
+          <div class="font-bold flex items-center gap-1.5 text-xs">
+            <i class="fa-solid fa-circle-info text-amber-600"></i>
+            <span>데모 모드 및 폴백 안내</span>
+          </div>
+          <p class="text-[11px] leading-relaxed">
+            URL을 비워두거나 연결할 수 없을 경우 브라우저 <strong>로컬 스토리지 기반 스마트 데모 모드</strong>로 자동 동작하여 좌석 조회, 예약 생성, 취소 기능이 완벽하게 시뮬레이션됩니다.
+          </p>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-slate-700">현재 연결 상태:</span>
+            <span id="gasStatusLabel" class="font-bold text-emerald-600">데모 모드 활성</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btnTestGasConnection" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-lg transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-network-wired text-indigo-500"></i>
+              <span>연결 테스트</span>
+            </button>
+            <button type="button" id="btnResetToDemo" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-lg transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-rotate-left"></i>
+              <span>데모 모드로 초기화</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+        <button type="button" class="settings-close-btn px-4 py-2 font-semibold text-slate-600 hover:bg-slate-200 rounded-xl text-xs">취소</button>
+        <button type="button" id="btnSaveGasUrl" class="px-5 py-2 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs shadow-xs">저장 및 적용</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: GAS CODE & GOOGLE SHEET GUIDE ================= -->
+  <div id="gasGuideModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="modal-backdrop fixed inset-0 transition-opacity"></div>
+    <div class="relative bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-10 max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+            <i class="fa-solid fa-file-code"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base">Google Apps Script (GAS) 백엔드 코드</h3>
+            <p class="text-xs text-slate-400">구글 스프레드시트와 연동되는 완벽한 Apps Script 소스코드</p>
+          </div>
+        </div>
+        <button type="button" class="guide-close-btn p-1.5 text-slate-400 hover:text-white rounded-lg">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-5 text-xs text-slate-700">
+        
+        <!-- Troubleshooting Banner for the exact error in user screenshot -->
+        <div class="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 sm:p-5 text-slate-800 space-y-3 shadow-xs">
+          <div class="flex items-center gap-2.5 text-rose-700 font-bold text-sm">
+            <i class="fa-solid fa-triangle-exclamation text-base"></i>
+            <span>🚨 오류 해결: "Exception: Index(이)라는 이름의 HTML 파일을 찾을 수 없습니다."</span>
+          </div>
+          <div class="space-y-2 text-xs leading-relaxed text-slate-700">
+            <p>
+              <strong>원인:</strong> Google Apps Script의 <code>Code.gs</code>에서 <code>HtmlService.createHtmlOutputFromFile('Index')</code>를 호출했으나, Apps Script 프로젝트 좌측 파일 목록에 <strong>Index.html</strong> 파일이 없어서 발생한 것입니다.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div class="bg-white p-3.5 rounded-xl border border-rose-200 space-y-1.5">
+                <span class="font-bold text-indigo-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-bolt"></i> 해결법 1 (추천: 10초 만에 해결)
+                </span>
+                <p class="text-[11px] text-slate-600">
+                  아래의 <strong>[Code.gs 소스코드]</strong> 전체를 복사하여 Google Apps Script의 <code>코드.gs</code>에 붙여넣기 한 뒤, 상단 <strong>[배포] → [배포 관리] → ✏️수정 → 버전: [새 버전] → [배포]</strong>를 누르면 에러가 즉시 해결됩니다! (Index 파일이 없어도 안전하게 실행되도록 방어 코드가 적용되어 있습니다)
+                </p>
+              </div>
+              <div class="bg-white p-3.5 rounded-xl border border-rose-200 space-y-1.5">
+                <span class="font-bold text-indigo-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-file-code"></i> 해결법 2 (GAS에서 직접 웹페이지 띄우기)
+                </span>
+                <p class="text-[11px] text-slate-600">
+                  Apps Script 좌측 <strong>[파일 +] → [HTML]</strong>을 클릭한 뒤 이름으로 <strong>Index</strong>만 입력하고, 우측의 <strong>[전체 HTML 코드 복사]</strong> 버튼을 눌러 그 안에 붙여넣고 새 버전으로 배포하시면 됩니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Setup Guide Steps -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+          <h4 class="font-bold text-slate-900 text-sm">💡 구글 시트 신규 데이터베이스 구조 대응</h4>
+          <p class="text-[11px] text-slate-600 leading-relaxed">
+            변경하신 <strong>좌석 정보(Seats)</strong> 및 <strong>예약 정보(Reservations)</strong> 신규 스키마(Floor, Amenities, Max_Hours, CheckIn_Status 등)에 맞추어 최적화된 백엔드 코드입니다. 단일 시트 및 개별 시트 구조 모두 자동 인식하여 처리합니다.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+            <div class="bg-white p-2 rounded-lg border border-slate-200">
+              <strong class="text-indigo-600">좌석 테이블 필드:</strong><br>
+              <code>Seat_ID</code>, <code>Category</code>, <code>Name</code>, <code>Floor</code>, <code>Capacity</code>, <code>Amenities</code>, <code>Max_Hours</code>, <code>Status</code>
+            </div>
+            <div class="bg-white p-2 rounded-lg border border-slate-200">
+              <strong class="text-indigo-600">예약 테이블 필드:</strong><br>
+              <code>Reservation_ID</code>, <code>User_Name</code>, <code>User_Email</code>, <code>User_Phone</code>, <code>Seat_ID</code>, <code>Date</code>, <code>Start_Time</code>, <code>End_Time</code>, <code>CheckIn_Status</code>, <code>Status</code>, <code>Created_At</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <span class="font-bold text-slate-800 text-sm">Code.gs 소스코드 (신규 스키마 및 입실 상태 대응)</span>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btnCopyEntireHtml" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-all flex items-center gap-1 text-xs">
+              <i class="fa-solid fa-code"></i>
+              <span id="copyHtmlBtnText">전체 HTML 복사 (GAS Index.html용)</span>
+            </button>
+            <button type="button" id="btnCopyGasCode" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all flex items-center gap-1.5 text-xs shadow-xs">
+              <i class="fa-regular fa-copy"></i>
+              <span id="copyBtnText">Code.gs 코드 복사</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Code Block -->
+        <pre class="bg-slate-900 text-slate-200 p-4 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed max-h-[420px]" id="gasSourceCodeBlock"><code>/**
+ * 도서관 좌석 및 스터디룸 예약 시스템 Google Apps Script (GAS) 백엔드
+ * 구글 시트 신규 테이블 스키마 완벽 대응:
+ * 1. 좌석 테이블: Seat_ID, Category, Name, Floor, Capacity, Amenities, Max_Hours, Status
+ * 2. 예약 테이블: Reservation_ID, User_Name, User_Email, User_Phone, Seat_ID, Date, Start_Time, End_Time, CheckIn_Status, Status, Created_At
+ */
+
+function doGet(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const action = (e && e.parameter) ? e.parameter.action : null;
+  
+  if (!action) {
+    try {
+      return HtmlService.createHtmlOutputFromFile('Index')
+        .setTitle('도서관 좌석 및 스터디룸 예약 시스템')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    } catch (fileErr) {
+      return HtmlService.createHtmlOutput(`
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head><meta charset="utf-8"><title>GAS API 정상 작동 중</title>
+        <style>body{font-family:sans-serif;padding:30px;background:#f8fafc;color:#1e293b;}.card{max-width:540px;margin:20px auto;background:#fff;padding:24px;border-radius:12px;border:1px solid #e2e8f0;}</style>
+        </head><body><div class="card"><h2 style="color:#4f46e5;margin:0 0 10px;">📚 도서관 예약 API 서버 정상 작동 중</h2><p style="color:#64748b;font-size:13px;">구글 시트 데이터베이스와 정상 연동되었습니다.</p><a href="?action=getSeats" style="color:#4f46e5;font-weight:bold;font-size:13px;">▶ 좌석 데이터 조회 (?action=getSeats)</a></div></body></html>
+      `);
+    }
+  }
+
+  try {
+    if (action === 'getSeats') {
+      const seats = getSeatsFromSpreadsheet(ss);
+      return sendJson({ success: true, data: seats });
+    }
+    
+    if (action === 'getReservations') {
+      const date = e.parameter.date;
+      const allRes = getReservationsFromSpreadsheet(ss);
+      const filtered = allRes.filter(r => {
+        const rDate = String(r.Date || r.date || '').substring(0, 10);
+        const rStatus = String(r.Status || r.status || '').toUpperCase();
+        return rDate === date && rStatus !== 'CANCELLED';
+      });
+      return sendJson({ success: true, data: filtered });
+    }
+    
+    if (action === 'getUserReservations') {
+      const email = (e.parameter.email || '').toLowerCase();
+      const allRes = getReservationsFromSpreadsheet(ss);
+      const userRes = allRes.filter(r => {
+        return (String(r.User_Email || r.userEmail || '')).toLowerCase() === email;
+      });
+      return sendJson({ success: true, data: userRes });
+    }
+    
+    return sendJson({ success: false, message: '알 수 없는 action입니다: ' + action });
+  } catch (err) {
+    return sendJson({ success: false, message: err.toString() });
+  }
+}
+
+function doPost(e) {
+  let body;
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return sendJson({ success: false, message: 'JSON 파싱 오류: ' + err.toString() });
+  }
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  try {
+    if (body.action === 'createReservation') {
+      const d = body.data;
+      if (!d.userName || !d.userEmail || !d.seatId || !d.date || !d.startTime || !d.endTime) {
+        return sendJson({ success: false, message: '필수 필드가 누락되었습니다.' });
+      }
+      
+      const existing = getReservationsFromSpreadsheet(ss);
+      const isOverlap = existing.some(r => {
+        const rSeat = r.Seat_ID || r.seatId;
+        const rDate = String(r.Date || r.date || '').substring(0, 10);
+        const rStatus = String(r.Status || r.status || '').toUpperCase();
+        if (rSeat === d.seatId && rDate === d.date && rStatus !== 'CANCELLED') {
+          const s = normalizeTimeStr(d.startTime);
+          const e = normalizeTimeStr(d.endTime);
+          const rs = normalizeTimeStr(r.Start_Time || r.startTime);
+          const re = normalizeTimeStr(r.End_Time || r.endTime);
+          return (s < re && e > rs);
+        }
+        return false;
+      });
+      
+      if (isOverlap) {
+        return sendJson({ success: false, message: '선택하신 시간대에 이미 다른 예약이 존재합니다.' });
+      }
+      
+      const newId = 'RES-' + Math.floor(10000000 + Math.random() * 90000000);
+      const nowStr = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm:ss');
+      
+      const newRow = [
+        newId,               // Reservation_ID
+        d.userName,          // User_Name
+        d.userEmail,         // User_Email
+        d.userPhone || '',   // User_Phone
+        d.seatId,            // Seat_ID
+        d.date,              // Date
+        d.startTime,         // Start_Time
+        d.endTime,           // End_Time
+        'Pending',           // CheckIn_Status (Pending)
+        'Confirmed',         // Status (Confirmed)
+        nowStr               // Created_At
+      ];
+      
+      appendReservationToSpreadsheet(ss, newRow);
+      
+      return sendJson({
+        success: true,
+        message: '예약이 성공적으로 완료되었습니다.',
+        reservationId: newId,
+        data: {
+          Reservation_ID: newId,
+          User_Name: d.userName,
+          User_Email: d.userEmail,
+          User_Phone: d.userPhone || '',
+          Seat_ID: d.seatId,
+          Date: d.date,
+          Start_Time: d.startTime,
+          End_Time: d.endTime,
+          CheckIn_Status: 'Pending',
+          Status: 'Confirmed',
+          Created_At: nowStr
+        }
+      });
+    }
+    
+    if (body.action === 'cancelReservation') {
+      const resId = body.reservationId;
+      const email = (body.userEmail || '').toLowerCase();
+      const updated = updateReservationField(ss, resId, email, 'Status', 'Cancelled');
+      if (!updated) {
+        return sendJson({ success: false, message: '예약을 찾을 수 없거나 이메일이 일치하지 않습니다.' });
+      }
+      return sendJson({ success: true, message: '예약이 정상적으로 취소되었습니다.' });
+    }
+
+    if (body.action === 'checkInReservation') {
+      const resId = body.reservationId;
+      const email = (body.userEmail || '').toLowerCase();
+      const updated = updateReservationField(ss, resId, email, 'CheckIn_Status', 'CheckedIn');
+      if (!updated) {
+        return sendJson({ success: false, message: '예약을 찾을 수 없습니다.' });
+      }
+      return sendJson({ success: true, message: '입실 확인이 완료되었습니다.' });
+    }
+    
+    return sendJson({ success: false, message: '지원하지 않는 action입니다.' });
+  } catch (err) {
+    return sendJson({ success: false, message: err.toString() });
+  }
+}
+
+function sendJson(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function normalizeTimeStr(t) {
+  if (!t) return '00:00';
+  const str = String(t).trim();
+  if (/^\d:\d\d/.test(str)) return '0' + str;
+  return str;
+}
+
+// 좌석 데이터 추출 (단일 시트 및 분리 시트 모두 자동 지원)
+function getSeatsFromSpreadsheet(ss) {
+  let sheet = ss.getSheetByName('Seats') || ss.getSheetByName('좌석');
+  if (!sheet) {
+    sheet = ss.getSheets()[0];
+  }
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) return [];
+
+  let headerRowIdx = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim().toLowerCase() === 'seat_id') {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if (headerRowIdx === -1) return [];
+
+  const headers = values[headerRowIdx].map(h => String(h).trim());
+  const seats = [];
+
+  for (let i = headerRowIdx + 1; i < values.length; i++) {
+    const row = values[i];
+    const id = String(row[0]).trim();
+    if (!id) continue;
+    if (id.toLowerCase() === 'reservation_id') break;
+    if (id.toLowerCase().startsWith('string') || id.includes('식별자')) continue;
+
+    const item = {};
+    for (let j = 0; j < headers.length; j++) {
+      if (headers[j]) item[headers[j]] = row[j];
+    }
+    seats.push(item);
+  }
+  return seats;
+}
+
+// 예약 데이터 추출
+function getReservationsFromSpreadsheet(ss) {
+  let sheet = ss.getSheetByName('Reservations') || ss.getSheetByName('예약');
+  if (!sheet) {
+    sheet = ss.getSheets()[0];
+  }
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) return [];
+
+  let headerRowIdx = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim().toLowerCase() === 'reservation_id') {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if (headerRowIdx === -1) return [];
+
+  const headers = values[headerRowIdx].map(h => String(h).trim());
+  const list = [];
+
+  for (let i = headerRowIdx + 1; i < values.length; i++) {
+    const row = values[i];
+    const id = String(row[0]).trim();
+    if (!id || id.toLowerCase().startsWith('string') || id.includes('고유 번호')) continue;
+
+    const item = {};
+    for (let j = 0; j < headers.length; j++) {
+      if (headers[j]) item[headers[j]] = row[j];
+    }
+    list.push(item);
+  }
+  return list;
+}
+
+// 신규 예약 추가
+function appendReservationToSpreadsheet(ss, newRow) {
+  let sheet = ss.getSheetByName('Reservations') || ss.getSheetByName('예약');
+  if (sheet) {
+    sheet.appendRow(newRow);
+    return;
+  }
+  sheet = ss.getSheets()[0];
+  sheet.appendRow(newRow);
+}
+
+// 필드 업데이트
+function updateReservationField(ss, resId, email, targetField, targetValue) {
+  let sheet = ss.getSheetByName('Reservations') || ss.getSheetByName('예약');
+  if (!sheet) sheet = ss.getSheets()[0];
+
+  const values = sheet.getDataRange().getValues();
+  let headerRowIdx = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim().toLowerCase() === 'reservation_id') {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if (headerRowIdx === -1) return false;
+
+  const headers = values[headerRowIdx].map(h => String(h).trim().toLowerCase());
+  const idCol = headers.indexOf('reservation_id');
+  const emailCol = headers.indexOf('user_email');
+  const targetCol = headers.indexOf(targetField.toLowerCase());
+
+  if (targetCol === -1) return false;
+
+  for (let i = headerRowIdx + 1; i < values.length; i++) {
+    const rowId = String(values[i][idCol]).trim();
+    const rowEmail = String(values[i][emailCol]).trim().toLowerCase();
+    if (rowId === resId && (rowEmail === email || !email)) {
+      sheet.getRange(i + 1, targetCol + 1).setValue(targetValue);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * [편의 기능] 구글 시트 테이블 및 초기 샘플 데이터 자동 생성 함수
+ * Apps Script 편집기 상단에서 'initDatabase'를 선택하고 [실행] 버튼을 누르면
+ * Seats(좌석) 및 Reservations(예약) 시트와 헤더가 자동으로 생성됩니다!
+ */
+function initDatabase() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. Seats 시트 설정
+  let seatSheet = ss.getSheetByName('Seats');
+  if (!seatSheet) {
+    seatSheet = ss.insertSheet('Seats');
+  }
+  if (seatSheet.getLastRow() === 0) {
+    seatSheet.appendRow(['Seat_ID', 'Category', 'Name', 'Floor', 'Capacity', 'Amenities', 'Max_Hours', 'Status']);
+    const sampleSeats = [
+      ['S-101', '일반열람실', '열람실 101번 (창가)', '1층 메인열람실', 1, '전원 콘센트, LED 스탠드, 무선충전기', 4, 'Active'],
+      ['S-102', '일반열람실', '열람실 102번 (창가)', '1층 메인열람실', 1, '전원 콘센트, LED 스탠드, 무선충전기', 4, 'Active'],
+      ['S-103', '일반열람실', '열람실 103번 (집중석)', '1층 메인열람실', 1, '전원 콘센트, 와이드 파티션, LED 스탠드', 4, 'Active'],
+      ['S-104', '일반열람실', '열람실 104번 (집중석)', '1층 메인열람실', 1, '전원 콘센트, 와이드 파티션, LED 스탠드', 4, 'Active'],
+      ['N-201', '노트북존', '노트북석 201번 (듀얼모니터)', '2층 노트북존', 1, '27인치 QHD 모니터, Type-C 65W PD, Wi-Fi 6', 4, 'Active'],
+      ['N-202', '노트북존', '노트북석 202번 (듀얼모니터)', '2층 노트북존', 1, '27인치 QHD 모니터, Type-C 65W PD, Wi-Fi 6', 4, 'Active'],
+      ['N-203', '노트북존', '노트북석 203번 (모션데스크)', '2층 노트북존', 1, '전동 승강 모션데스크, 전원 4구', 4, 'Active'],
+      ['R-301', '스터디룸', '스터디룸 A (4인실)', '3층 스터디존', 4, '55인치 4K TV 미러링, 대형 화이트보드, 개별 냉난방', 2, 'Active'],
+      ['R-302', '스터디룸', '스터디룸 B (6인실)', '3층 스터디존', 6, '65인치 화상회의 TV, 방음 패널, 화이트보드', 2, 'Active'],
+      ['R-303', '스터디룸', '세미나룸 C (10인실)', '3층 스터디존', 10, '빔프로젝터, 전동 스크린, 무선 마이크', 2, 'Active']
+    ];
+    sampleSeats.forEach(row => seatSheet.appendRow(row));
+    seatSheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#e0e7ff');
+  }
+
+  // 2. Reservations 시트 설정
+  let resSheet = ss.getSheetByName('Reservations');
+  if (!resSheet) {
+    resSheet = ss.insertSheet('Reservations');
+  }
+  if (resSheet.getLastRow() === 0) {
+    resSheet.appendRow(['Reservation_ID', 'User_Name', 'User_Email', 'User_Phone', 'Seat_ID', 'Date', 'Start_Time', 'End_Time', 'CheckIn_Status', 'Status', 'Created_At']);
+    resSheet.getRange(1, 1, 1, 11).setFontWeight('bold').setBackground('#f1f5f9');
+  }
+  
+  Logger.log('데이터베이스 초기화가 완료되었습니다.');
+}</code></pre>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <button type="button" class="guide-close-btn px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-200 hover:bg-slate-300 rounded-xl transition-all">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TOAST NOTIFICATION CONTAINER ================= -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+    <!-- Toasts injected via JS -->
+  </div>
+
+  <!-- ================= JAVASCRIPT APPLICATION CORE ================= -->
+  <script>
+    /**
+     * Library Seat & Study Room Reservation System
+     * Frontend Application Core
+     */
+
+    // --- CONFIGURATION & STATE ---
+    const STORAGE_KEY_GAS_URL = 'lib_reservation_gas_url';
+    const STORAGE_KEY_USER_EMAIL = 'lib_reservation_user_email';
+    const STORAGE_KEY_MOCK_SEATS = 'lib_reservation_mock_seats';
+    const STORAGE_KEY_MOCK_RES = 'lib_reservation_mock_reservations';
+
+    const OPERATING_HOURS = {
+      start: 8,  // 08:00
+      end: 22    // 22:00
+    };
+
+    // Category Color & Icon Mappings
+    const CATEGORY_STYLES = {
+      '일반열람실': {
+        color: 'indigo',
+        bg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        badge: 'bg-indigo-600 text-white',
+        icon: 'fa-book-open'
+      },
+      '노트북존': {
+        color: 'sky',
+        bg: 'bg-sky-50 text-sky-700 border-sky-200',
+        badge: 'bg-sky-600 text-white',
+        icon: 'fa-laptop'
+      },
+      '스터디룸': {
+        color: 'emerald',
+        bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        badge: 'bg-emerald-600 text-white',
+        icon: 'fa-users'
+      }
+    };
+
+    // Default Seed Data for Realistic Library Simulation (Updated with new schema)
+    const INITIAL_SEATS = [
+      // 1층 일반열람실 (Floor: 1층 메인열람실, Max_Hours: 4)
+      { Seat_ID: 'S-101', Category: '일반열람실', Name: '열람실 101번 (창가)', Floor: '1층 메인열람실', Capacity: 1, Amenities: '전원 콘센트, LED 스탠드, 무선충전기', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'S-102', Category: '일반열람실', Name: '열람실 102번 (창가)', Floor: '1층 메인열람실', Capacity: 1, Amenities: '전원 콘센트, LED 스탠드, 무선충전기', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'S-103', Category: '일반열람실', Name: '열람실 103번 (집중석)', Floor: '1층 메인열람실', Capacity: 1, Amenities: '전원 콘센트, 와이드 파티션, LED 스탠드', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'S-104', Category: '일반열람실', Name: '열람실 104번 (집중석)', Floor: '1층 메인열람실', Capacity: 1, Amenities: '전원 콘센트, 와이드 파티션, LED 스탠드', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'S-105', Category: '일반열람실', Name: '열람실 105번 (오픈형)', Floor: '1층 메인열람실', Capacity: 1, Amenities: '전원 콘센트, 대형 원목 테이블', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'S-106', Category: '일반열람실', Name: '열람실 106번 (오픈형)', Floor: '1층 메인열람실', Capacity: 1, Amenities: '전원 콘센트, 대형 원목 테이블', Max_Hours: 4, Status: 'Active' },
+
+      // 2층 노트북존 (Floor: 2층 노트북존, Max_Hours: 4)
+      { Seat_ID: 'N-201', Category: '노트북존', Name: '노트북석 201번 (듀얼모니터)', Floor: '2층 노트북존', Capacity: 1, Amenities: '27인치 QHD 피벗 모니터, Type-C 65W PD, 기가 Wi-Fi 6', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'N-202', Category: '노트북존', Name: '노트북석 202번 (듀얼모니터)', Floor: '2층 노트북존', Capacity: 1, Amenities: '27인치 QHD 피벗 모니터, Type-C 65W PD, 기가 Wi-Fi 6', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'N-203', Category: '노트북존', Name: '노트북석 203번 (모션데스크)', Floor: '2층 노트북존', Capacity: 1, Amenities: '전동 승강 모션데스크, 전원 콘센트 4구', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'N-204', Category: '노트북존', Name: '노트북석 204번 (일반)', Floor: '2층 노트북존', Capacity: 1, Amenities: '전원 콘센트 2구, 마우스패드 완비', Max_Hours: 4, Status: 'Active' },
+      { Seat_ID: 'N-205', Category: '노트북존', Name: '노트북석 205번 (일반)', Floor: '2층 노트북존', Capacity: 1, Amenities: '전원 콘센트 2구, 마우스패드 완비', Max_Hours: 4, Status: 'Active' },
+
+      // 3층 스터디룸 (Floor: 3층 스터디존, Max_Hours: 2)
+      { Seat_ID: 'R-301', Category: '스터디룸', Name: '스터디룸 A (4인실)', Floor: '3층 스터디존', Capacity: 4, Amenities: '55인치 4K TV 미러링, 대형 화이트보드, 개별 냉난방', Max_Hours: 2, Status: 'Active' },
+      { Seat_ID: 'R-302', Category: '스터디룸', Name: '스터디룸 B (6인실)', Floor: '3층 스터디존', Capacity: 6, Amenities: '65인치 화상회의 TV, 흡음 방음 패널, 화이트보드', Max_Hours: 2, Status: 'Active' },
+      { Seat_ID: 'R-303', Category: '스터디룸', Name: '세미나룸 C (10인실)', Floor: '3층 스터디존', Capacity: 10, Amenities: '빔프로젝터 및 전동 스크린, 무선 마이크, 강연대', Max_Hours: 2, Status: 'Active' }
+    ];
+
+    // App State
+    let appState = {
+      gasUrl: localStorage.getItem(STORAGE_KEY_GAS_URL) || '',
+      selectedDate: getFormattedDate(0),
+      selectedCategory: 'ALL',
+      selectedFloor: 'ALL',
+      searchQuery: '',
+      availableOnly: false,
+      viewMode: 'grid', // 'grid' or 'timeline'
+      seats: [],
+      reservations: [],
+      userEmail: localStorage.getItem(STORAGE_KEY_USER_EMAIL) || '',
+      currentModalSeat: null,
+      pendingCancelReservation: null
+    };
+
+    // Data Normalization Functions for Schema Resilience
+    function normalizeSeat(s) {
+      return {
+        seatId: String(s.Seat_ID || s.seatId || ''),
+        category: String(s.Category || s.category || '일반열람실'),
+        name: String(s.Name || s.name || ''),
+        floor: String(s.Floor || s.floor || '1층 메인열람실'),
+        capacity: parseInt(s.Capacity || s.capacity || 1, 10),
+        amenities: String(s.Amenities || s.amenities || ''),
+        maxHours: parseInt(s.Max_Hours || s.maxHours || (s.Category === '스터디룸' ? 2 : 4), 10),
+        status: String(s.Status || s.status || 'Active'),
+        description: String(s.Amenities || s.description || '편안한 학습 환경을 제공합니다.')
+      };
+    }
+
+    function normalizeReservation(r) {
+      return {
+        reservationId: String(r.Reservation_ID || r.reservationId || ''),
+        userName: String(r.User_Name || r.userName || ''),
+        userEmail: String(r.User_Email || r.userEmail || ''),
+        userPhone: String(r.User_Phone || r.userPhone || ''),
+        seatId: String(r.Seat_ID || r.seatId || ''),
+        date: String(r.Date || r.date || '').substring(0, 10),
+        startTime: normalizeTimeStr(r.Start_Time || r.startTime || '09:00'),
+        endTime: normalizeTimeStr(r.End_Time || r.endTime || '11:00'),
+        checkInStatus: String(r.CheckIn_Status || r.checkInStatus || 'Pending'),
+        status: String(r.Status || r.status || 'Confirmed'),
+        createdAt: String(r.Created_At || r.createdAt || '')
+      };
+    }
+
+    function normalizeTimeStr(t) {
+      if (!t) return '09:00';
+      const s = String(t).trim();
+      if (/^\d:\d\d/.test(s)) return '0' + s;
+      return s;
+    }
+
+    // --- UTILITY FUNCTIONS ---
+    function getFormattedDate(offsetDays = 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatTime(hour) {
+      return String(hour).padStart(2, '0') + ':00';
+    }
+
+    function parseHour(timeStr) {
+      if (!timeStr) return 8;
+      return parseInt(timeStr.split(':')[0], 10);
+    }
+
+    // Custom Toast Notification System (NO native alert/confirm)
+    function showToast(message, type = 'info', duration = 3500) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const config = {
+        success: { icon: 'fa-circle-check', bg: 'bg-emerald-600', text: 'text-white' },
+        error: { icon: 'fa-circle-exclamation', bg: 'bg-rose-600', text: 'text-white' },
+        warning: { icon: 'fa-triangle-exclamation', bg: 'bg-amber-500', text: 'text-white' },
+        info: { icon: 'fa-circle-info', bg: 'bg-slate-900', text: 'text-white' }
+      }[type] || { icon: 'fa-circle-info', bg: 'bg-slate-900', text: 'text-white' };
+
+      toast.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl ${config.bg} ${config.text} text-xs sm:text-sm font-medium transform transition-all duration-300 translate-y-3 opacity-0`;
+      toast.innerHTML = `
+        <i class="fa-solid ${config.icon} text-base shrink-0"></i>
+        <span class="flex-1 leading-snug">${message}</span>
+        <button type="button" class="text-white/70 hover:text-white shrink-0 p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      `;
+
+      container.appendChild(toast);
+
+      // Trigger enter animation
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-3', 'opacity-0');
+      });
+
+      const closeToast = () => {
+        toast.classList.add('opacity-0', 'scale-95');
+        setTimeout(() => toast.remove(), 250);
+      };
+
+      toast.querySelector('button').addEventListener('click', closeToast);
+      setTimeout(closeToast, duration);
+    }
+
+    // Local Storage Mock Database Helpers
+    function getStoredMockSeats() {
+      const data = localStorage.getItem(STORAGE_KEY_MOCK_SEATS);
+      if (data) {
+        try { return JSON.parse(data); } catch(e) {}
+      }
+      localStorage.setItem(STORAGE_KEY_MOCK_SEATS, JSON.stringify(INITIAL_SEATS));
+      return INITIAL_SEATS;
+    }
+
+    function getStoredMockReservations() {
+      const data = localStorage.getItem(STORAGE_KEY_MOCK_RES);
+      if (data) {
+        try { return JSON.parse(data); } catch(e) {}
+      }
+      
+      // Default initial mock bookings matching user's spreadsheet example
+      const today = getFormattedDate(0);
+      const defaultReservations = [
+        {
+          Reservation_ID: 'RES-83921049',
+          User_Name: '홍길동',
+          User_Email: 'user@example.com',
+          User_Phone: '010-1234-5678',
+          Seat_ID: 'S-101',
+          Date: today,
+          Start_Time: '09:00',
+          End_Time: '11:00',
+          CheckIn_Status: 'Pending',
+          Status: 'Confirmed',
+          Created_At: today + ' 08:30:00'
+        },
+        {
+          Reservation_ID: 'RES-83921050',
+          User_Name: '이영희',
+          User_Email: 'younghee@example.com',
+          User_Phone: '010-9876-5432',
+          Seat_ID: 'N-201',
+          Date: today,
+          Start_Time: '13:00',
+          End_Time: '17:00',
+          CheckIn_Status: 'CheckedIn',
+          Status: 'Confirmed',
+          Created_At: today + ' 09:15:00'
+        },
+        {
+          Reservation_ID: 'RES-83921051',
+          User_Name: '박지민',
+          User_Email: 'jimin@example.com',
+          User_Phone: '010-5555-4444',
+          Seat_ID: 'R-301',
+          Date: today,
+          Start_Time: '14:00',
+          End_Time: '16:00',
+          CheckIn_Status: 'Pending',
+          Status: 'Confirmed',
+          Created_At: today + ' 10:00:00'
+        }
+      ];
+      localStorage.setItem(STORAGE_KEY_MOCK_RES, JSON.stringify(defaultReservations));
+      return defaultReservations;
+    }
+
+    function saveStoredMockReservations(list) {
+      localStorage.setItem(STORAGE_KEY_MOCK_RES, JSON.stringify(list));
+    }
+
+    // --- API CLIENT (GAS WEB APP WITH MOCK FALLBACK) ---
+    async function apiGetSeats() {
+      if (appState.gasUrl) {
+        try {
+          const res = await fetch(`${appState.gasUrl}?action=getSeats`, { method: 'GET' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const items = Array.isArray(json) ? json : (json && Array.isArray(json.data) ? json.data : null);
+          if (items && items.length > 0) {
+            return items.map(normalizeSeat);
+          }
+        } catch (err) {
+          console.warn('GAS API Seats fetch 실패, 로컬 데이터 사용:', err);
+          showToast('GAS API 연결이 원활하지 않아 로컬 데이터를 불러왔습니다.', 'warning');
+        }
+      }
+      return getStoredMockSeats().map(normalizeSeat);
+    }
+
+    async function apiGetReservations(date) {
+      if (appState.gasUrl) {
+        try {
+          const res = await fetch(`${appState.gasUrl}?action=getReservations&date=${encodeURIComponent(date)}`, { method: 'GET' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const items = Array.isArray(json) ? json : (json && Array.isArray(json.data) ? json.data : null);
+          if (items) {
+            return items.map(normalizeReservation);
+          }
+        } catch (err) {
+          console.warn('GAS API Reservations fetch 실패, 로컬 데이터 사용:', err);
+        }
+      }
+      const all = getStoredMockReservations().map(normalizeReservation);
+      return all.filter(r => r.date === date && r.status.toUpperCase() !== 'CANCELLED');
+    }
+
+    async function apiGetUserReservations(email) {
+      if (!email) return [];
+      if (appState.gasUrl) {
+        try {
+          const res = await fetch(`${appState.gasUrl}?action=getUserReservations&email=${encodeURIComponent(email)}`, { method: 'GET' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const items = Array.isArray(json) ? json : (json && Array.isArray(json.data) ? json.data : null);
+          if (items) {
+            return items.map(normalizeReservation);
+          }
+        } catch (err) {
+          console.warn('GAS API UserReservations fetch 실패, 로컬 데이터 사용:', err);
+        }
+      }
+      const all = getStoredMockReservations().map(normalizeReservation);
+      return all.filter(r => (r.userEmail || '').toLowerCase() === email.toLowerCase());
+    }
+
+    async function apiCreateReservation(formData) {
+      if (appState.gasUrl) {
+        try {
+          const res = await fetch(appState.gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'createReservation',
+              data: formData
+            })
+          });
+          const json = await res.json();
+          if (json.success) return json;
+          throw new Error(json.message || '예약 생성 중 오류가 발생했습니다.');
+        } catch (err) {
+          console.warn('GAS API createReservation 실패, 로컬 폴백 처리:', err);
+          if (err.message && !err.message.includes('fetch')) {
+            throw err;
+          }
+        }
+      }
+
+      // Local Mock Execution
+      const all = getStoredMockReservations().map(normalizeReservation);
+      // Check collision
+      const isOverlap = all.some(r => {
+        if (r.seatId === formData.seatId && r.date === formData.date && r.status.toUpperCase() !== 'CANCELLED') {
+          return (formData.startTime < r.endTime && formData.endTime > r.startTime);
+        }
+        return false;
+      });
+
+      if (isOverlap) {
+        throw new Error('선택하신 시간대에 이미 다른 예약이 존재합니다.');
+      }
+
+      const newId = 'RES-' + Math.floor(10000000 + Math.random() * 90000000);
+      const newReservation = {
+        Reservation_ID: newId,
+        User_Name: formData.userName,
+        User_Email: formData.userEmail,
+        User_Phone: formData.userPhone,
+        Seat_ID: formData.seatId,
+        Date: formData.date,
+        Start_Time: formData.startTime,
+        End_Time: formData.endTime,
+        CheckIn_Status: 'Pending',
+        Status: 'Confirmed',
+        Created_At: new Date().toISOString()
+      };
+
+      const rawAll = getStoredMockReservations();
+      rawAll.push(newReservation);
+      saveStoredMockReservations(rawAll);
+
+      return {
+        success: true,
+        message: '예약이 성공적으로 완료되었습니다.',
+        reservationId: newId,
+        data: normalizeReservation(newReservation)
+      };
+    }
+
+    async function apiCancelReservation(reservationId, userEmail) {
+      if (appState.gasUrl) {
+        try {
+          const res = await fetch(appState.gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'cancelReservation',
+              reservationId: reservationId,
+              userEmail: userEmail
+            })
+          });
+          const json = await res.json();
+          if (json.success) return json;
+          throw new Error(json.message || '예약 취소 중 오류가 발생했습니다.');
+        } catch (err) {
+          console.warn('GAS API cancelReservation 실패, 로컬 폴백 처리:', err);
+          if (err.message && !err.message.includes('fetch')) {
+            throw err;
+          }
+        }
+      }
+
+      // Local Mock Execution
+      const all = getStoredMockReservations();
+      const target = all.find(r => (r.Reservation_ID || r.reservationId) === reservationId);
+      if (!target) {
+        throw new Error('해당 예약을 찾을 수 없거나 예약자 이메일이 일치하지 않습니다.');
+      }
+
+      target.Status = 'Cancelled';
+      target.status = 'CANCELLED';
+      saveStoredMockReservations(all);
+
+      return { success: true, message: '예약이 정상적으로 취소되었습니다.' };
+    }
+
+    async function apiCheckInReservation(reservationId, userEmail) {
+      if (appState.gasUrl) {
+        try {
+          const res = await fetch(appState.gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'checkInReservation',
+              reservationId: reservationId,
+              userEmail: userEmail
+            })
+          });
+          const json = await res.json();
+          if (json.success) return json;
+          throw new Error(json.message || '입실 확인 처리 중 오류가 발생했습니다.');
+        } catch (err) {
+          console.warn('GAS API checkInReservation 실패, 로컬 폴백 처리:', err);
+          if (err.message && !err.message.includes('fetch')) {
+            throw err;
+          }
+        }
+      }
+
+      // Local Mock Execution
+      const all = getStoredMockReservations();
+      const target = all.find(r => (r.Reservation_ID || r.reservationId) === reservationId);
+      if (!target) {
+        throw new Error('해당 예약을 찾을 수 없습니다.');
+      }
+
+      target.CheckIn_Status = 'CheckedIn';
+      target.checkInStatus = 'CheckedIn';
+      saveStoredMockReservations(all);
+
+      return { success: true, message: '입실 확인이 완료되었습니다.' };
+    }
+
+    // --- APPLICATION CORE LOGIC ---
+    async function loadData() {
+      const loader = document.getElementById('seatsLoading');
+      loader.classList.remove('hidden');
+
+      try {
+        const [seats, reservations] = await Promise.all([
+          apiGetSeats(),
+          apiGetReservations(appState.selectedDate)
+        ]);
+        appState.seats = seats;
+        appState.reservations = reservations;
+        renderAll();
+      } catch (err) {
+        console.error('데이터 로드 실패:', err);
+        showToast('데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.', 'error');
+      } finally {
+        loader.classList.add('hidden');
+      }
+    }
+
+    function renderAll() {
+      updateSystemModeUI();
+      updateCategoryCounts();
+      updateStats();
+      renderSeats();
+    }
+
+    function updateSystemModeUI() {
+      const modeText = document.getElementById('systemModeText');
+      const modeBadge = document.getElementById('systemModeBadge');
+      const statusLabel = document.getElementById('gasStatusLabel');
+      
+      if (appState.gasUrl) {
+        modeText.textContent = 'GAS 연동됨';
+        modeBadge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200';
+        statusLabel.textContent = 'Google Apps Script 연결 활성';
+        statusLabel.className = 'font-bold text-indigo-600';
+      } else {
+        modeText.textContent = '스마트 데모 모드';
+        modeBadge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        statusLabel.textContent = '로컬 스마트 데모 모드';
+        statusLabel.className = 'font-bold text-emerald-600';
+      }
+
+      // Check stored user email
+      if (appState.userEmail) {
+        document.getElementById('storedEmailContainer').classList.remove('hidden');
+        document.getElementById('storedEmailText').textContent = appState.userEmail;
+      }
+    }
+
+    function updateCategoryCounts() {
+      const allCount = appState.seats.length;
+      const genCount = appState.seats.filter(s => s.category === '일반열람실').length;
+      const lapCount = appState.seats.filter(s => s.category === '노트북존').length;
+      const stuCount = appState.seats.filter(s => s.category === '스터디룸').length;
+
+      document.getElementById('tabCountALL').textContent = `(${allCount})`;
+      document.getElementById('tabCountGeneral').textContent = `(${genCount})`;
+      document.getElementById('tabCountLaptop').textContent = `(${lapCount})`;
+      document.getElementById('tabCountStudy').textContent = `(${stuCount})`;
+    }
+
+    // Calculate Seat Availability for Selected Date
+    function getSeatStatus(seatId) {
+      const bookings = appState.reservations.filter(r => r.seatId === seatId && r.status !== 'CANCELLED');
+      if (bookings.length === 0) {
+        return {
+          status: 'AVAILABLE',
+          label: '예약 가능',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          dotClass: 'bg-emerald-500',
+          bookings: []
+        };
+      }
+
+      // Count booked hours between 08:00 and 22:00 (14 slots total)
+      const totalSlots = OPERATING_HOURS.end - OPERATING_HOURS.start;
+      const bookedHours = new Set();
+      bookings.forEach(b => {
+        const s = parseHour(b.startTime);
+        const e = parseHour(b.endTime);
+        for (let h = s; h < e; h++) {
+          if (h >= OPERATING_HOURS.start && h < OPERATING_HOURS.end) {
+            bookedHours.add(h);
+          }
+        }
+      });
+
+      if (bookedHours.size >= totalSlots) {
+        return {
+          status: 'FULL',
+          label: '예약 마감',
+          badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+          dotClass: 'bg-rose-500',
+          bookings: bookings
+        };
+      }
+
+      return {
+        status: 'PARTIAL',
+        label: `${bookings.length}건 예약됨`,
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        dotClass: 'bg-amber-500',
+        bookings: bookings
+      };
+    }
+
+    function updateStats() {
+      let avail = 0;
+      let partial = 0;
+      let full = 0;
+
+      appState.seats.forEach(s => {
+        const res = getSeatStatus(s.seatId);
+        if (res.status === 'AVAILABLE') avail++;
+        else if (res.status === 'PARTIAL') partial++;
+        else if (res.status === 'FULL') full++;
+      });
+
+      document.getElementById('statAvailableSeats').textContent = avail;
+      document.getElementById('statPartialSeats').textContent = partial;
+      document.getElementById('statFullSeats').textContent = full;
+      document.getElementById('statTotalSeats').textContent = appState.seats.length;
+    }
+
+    // Filter Seats according to category, floor, search, and availability
+    function getFilteredSeats() {
+      return appState.seats.filter(seat => {
+        // Category Filter
+        if (appState.selectedCategory !== 'ALL' && seat.category !== appState.selectedCategory) {
+          return false;
+        }
+
+        // Floor Filter
+        if (appState.selectedFloor !== 'ALL') {
+          if (!seat.floor || !seat.floor.includes(appState.selectedFloor)) {
+            return false;
+          }
+        }
+
+        // Available Only Filter
+        if (appState.availableOnly) {
+          const st = getSeatStatus(seat.seatId);
+          if (st.status === 'FULL' || seat.status === 'Inactive') return false;
+        }
+
+        // Search Query Filter
+        if (appState.searchQuery.trim()) {
+          const q = appState.searchQuery.toLowerCase();
+          const matchName = seat.name.toLowerCase().includes(q);
+          const matchId = seat.seatId.toLowerCase().includes(q);
+          const matchFloor = (seat.floor || '').toLowerCase().includes(q);
+          const matchDesc = (seat.description || '').toLowerCase().includes(q);
+          const matchAmenities = (seat.amenities || '').toLowerCase().includes(q);
+          const matchCat = seat.category.toLowerCase().includes(q);
+          if (!matchName && !matchId && !matchFloor && !matchDesc && !matchAmenities && !matchCat) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+    }
+
+    function renderSeats() {
+      const filtered = getFilteredSeats();
+      const gridContainer = document.getElementById('seatsGrid');
+      const timelineContainer = document.getElementById('seatsTimelineContainer');
+      const emptyState = document.getElementById('seatsEmpty');
+
+      if (filtered.length === 0) {
+        gridContainer.innerHTML = '';
+        gridContainer.classList.add('hidden');
+        timelineContainer.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+
+      if (appState.viewMode === 'grid') {
+        gridContainer.classList.remove('hidden');
+        timelineContainer.classList.add('hidden');
+        renderGridView(filtered);
+      } else {
+        gridContainer.classList.add('hidden');
+        timelineContainer.classList.remove('hidden');
+        renderTimelineView(filtered);
+      }
+    }
+
+    // Render Card Grid View
+    function renderGridView(seats) {
+      const container = document.getElementById('seatsGrid');
+      container.innerHTML = seats.map(seat => {
+        const catStyle = CATEGORY_STYLES[seat.category] || CATEGORY_STYLES['일반열람실'];
+        const seatStatus = getSeatStatus(seat.seatId);
+        const isInactive = seat.status === 'Inactive';
+
+        // Generate visual mini timeline (08:00 to 22:00)
+        let miniSlotsHtml = '';
+        for (let h = OPERATING_HOURS.start; h < OPERATING_HOURS.end; h++) {
+          const isBooked = seatStatus.bookings.some(b => {
+            const startH = parseHour(b.startTime);
+            const endH = parseHour(b.endTime);
+            return h >= startH && h < endH;
+          });
+          const colorClass = isInactive ? 'bg-slate-300' : (isBooked ? 'bg-rose-500' : 'bg-emerald-400');
+          const title = `${formatTime(h)}~${formatTime(h+1)}: ${isInactive ? '점검중' : (isBooked ? '예약됨' : '가능')}`;
+          miniSlotsHtml += `<div class="h-2 flex-1 rounded-xs ${colorClass}" title="${title}"></div>`;
+        }
+
+        const isFull = seatStatus.status === 'FULL' || isInactive;
+
+        // Parse Amenities as separate pills
+        const amenitiesPills = (seat.amenities || '')
+          .split(',')
+          .map(a => a.trim())
+          .filter(Boolean)
+          .map(a => `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-medium"><i class="fa-solid fa-check text-indigo-500 text-[8px]"></i>${a}</span>`)
+          .join('');
+
+        return `
+          <div class="bg-white rounded-2xl border ${isInactive ? 'border-slate-300 opacity-75' : 'border-slate-200/90 hover:border-indigo-300 shadow-xs hover:shadow-md'} p-5 transition-all flex flex-col justify-between group">
+            
+            <!-- Card Header -->
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${catStyle.bg} border">
+                    <i class="fa-solid ${catStyle.icon} text-[10px]"></i>
+                    ${seat.category}
+                  </span>
+                  <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                    <i class="fa-solid fa-location-dot text-indigo-500 text-[10px]"></i>
+                    ${seat.floor}
+                  </span>
+                </div>
+
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${isInactive ? 'bg-slate-100 text-slate-500 border-slate-300' : seatStatus.badgeClass}">
+                  <span class="w-1.5 h-1.5 rounded-full ${isInactive ? 'bg-slate-400' : seatStatus.dotClass}"></span>
+                  ${isInactive ? '점검 중' : seatStatus.label}
+                </span>
+              </div>
+
+              <!-- Seat Title & ID -->
+              <div class="mb-2">
+                <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                  ${seat.name}
+                </h3>
+                <div class="flex items-center gap-2 text-xs text-slate-400 font-medium">
+                  <span class="font-mono">좌석 ID: ${seat.seatId}</span>
+                  <span>•</span>
+                  <span class="text-indigo-600 font-semibold"><i class="fa-regular fa-clock mr-0.5"></i>최대 ${seat.maxHours}시간</span>
+                </div>
+              </div>
+
+              <!-- Amenities Pills -->
+              <div class="flex flex-wrap gap-1 mb-3 min-h-[22px]">
+                ${amenitiesPills}
+              </div>
+
+              <!-- Capacity -->
+              <div class="flex items-center justify-between text-xs text-slate-500 pb-3 border-b border-slate-100">
+                <span class="flex items-center gap-1 font-medium">
+                  <i class="fa-solid fa-users text-slate-400"></i>
+                  ${seat.capacity > 1 ? `정원 ${seat.capacity}인실` : '개인 1인석'}
+                </span>
+                <span class="text-[11px] text-slate-400">
+                  ${seat.status === 'Active' ? '이용 가능 상태' : '임시 이용 제한'}
+                </span>
+              </div>
+
+              <!-- Mini Schedule Timeline -->
+              <div class="py-3">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                  <span>08:00</span>
+                  <span class="text-slate-500 font-medium">시간대별 현황</span>
+                  <span>22:00</span>
+                </div>
+                <div class="flex items-center gap-0.5 bg-slate-100 p-1 rounded-md">
+                  ${miniSlotsHtml}
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Button -->
+            <div class="pt-2">
+              <button 
+                type="button" 
+                onclick="openReservationModal('${seat.seatId}')"
+                class="w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${
+                  isFull 
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs hover:shadow-indigo-200 shadow-md'
+                }"
+                ${isFull ? 'disabled' : ''}
+              >
+                <i class="fa-regular fa-calendar-check"></i>
+                <span>${isInactive ? '좌석 점검 중' : (seatStatus.status === 'FULL' ? '당일 예약 마감' : '예약 신청하기')}</span>
+              </button>
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render Interactive Timeline Matrix Table
+    function renderTimelineView(seats) {
+      const headerRow = document.getElementById('timelineHeaderRow');
+      const tableBody = document.getElementById('timelineBody');
+
+      // Generate table header hours
+      let headersHtml = `<th class="p-3 sticky left-0 bg-slate-50 z-20 w-48 border-r border-slate-200">좌석 정보</th>`;
+      for (let h = OPERATING_HOURS.start; h < OPERATING_HOURS.end; h++) {
+        headersHtml += `<th class="p-2 text-center border-r border-slate-200 min-w-[50px] font-mono text-[11px]">${String(h).padStart(2, '0')}시</th>`;
+      }
+      headerRow.innerHTML = headersHtml;
+
+      // Generate table rows per seat
+      tableBody.innerHTML = seats.map(seat => {
+        const seatStatus = getSeatStatus(seat.seatId);
+        const isInactive = seat.status === 'Inactive';
+
+        let slotsCells = '';
+        for (let h = OPERATING_HOURS.start; h < OPERATING_HOURS.end; h++) {
+          const booked = seatStatus.bookings.find(b => {
+            const s = parseHour(b.startTime);
+            const e = parseHour(b.endTime);
+            return h >= s && h < e;
+          });
+
+          if (isInactive) {
+            slotsCells += `
+              <td class="p-1 text-center border-r border-slate-200 bg-slate-100 text-slate-400 text-[10px] font-medium" title="점검 중">
+                점검
+              </td>
+            `;
+          } else if (booked) {
+            slotsCells += `
+              <td class="p-1 text-center border-r border-slate-200 bg-rose-50" title="${booked.startTime}~${booked.endTime} 예약됨">
+                <span class="inline-block w-full py-1.5 rounded bg-rose-500 text-white text-[10px] font-bold">마감</span>
+              </td>
+            `;
+          } else {
+            slotsCells += `
+              <td class="p-1 text-center border-r border-slate-200 hover:bg-emerald-50 transition-colors">
+                <button 
+                  type="button" 
+                  onclick="openReservationModal('${seat.seatId}', ${h})" 
+                  class="w-full py-1.5 rounded bg-emerald-50 hover:bg-emerald-500 hover:text-white text-emerald-700 text-[10px] font-bold transition-all"
+                  title="${String(h).padStart(2,'0')}:00시 예약하기"
+                >
+                  가능
+                </button>
+              </td>
+            `;
+          }
+        }
+
+        return `
+          <tr class="hover:bg-slate-50/70 transition-colors">
+            <td class="p-3 sticky left-0 bg-white z-10 border-r border-slate-200 shadow-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full ${isInactive ? 'bg-slate-400' : seatStatus.dotClass}"></span>
+                <div>
+                  <div class="font-bold text-slate-800 text-xs">${seat.name}</div>
+                  <div class="text-[10px] text-slate-400 font-mono">${seat.floor} · ${seat.seatId}</div>
+                </div>
+              </div>
+            </td>
+            ${slotsCells}
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // --- RESERVATION MODAL CONTROLLER ---
+    function openReservationModal(seatId, defaultStartHour = null) {
+      const seat = appState.seats.find(s => s.seatId === seatId);
+      if (!seat) return;
+
+      appState.currentModalSeat = seat;
+
+      // Populate Seat details
+      document.getElementById('formSeatId').value = seat.seatId;
+      document.getElementById('resModalSeatName').textContent = seat.name;
+      document.getElementById('resModalSeatCategory').textContent = seat.category;
+      document.getElementById('resModalSeatFloor').textContent = seat.floor;
+      document.getElementById('resModalSeatCapacity').innerHTML = `<i class="fa-regular fa-user mr-1 text-indigo-500"></i>정원 ${seat.capacity}인`;
+      document.getElementById('resModalSelectedDate').textContent = appState.selectedDate;
+      document.getElementById('resModalSeatMaxHours').innerHTML = `<i class="fa-regular fa-clock mr-1"></i>최대 ${seat.maxHours}시간 이용`;
+
+      // Render Amenities Pills in Modal
+      const amenitiesContainer = document.getElementById('resModalAmenitiesContainer');
+      const amenitiesList = (seat.amenities || '').split(',').map(a => a.trim()).filter(Boolean);
+      amenitiesContainer.innerHTML = amenitiesList.map(a => `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-indigo-100 text-indigo-900 text-[11px] font-medium shadow-2xs">
+          <i class="fa-solid fa-check text-indigo-500 text-[9px]"></i>${a}
+        </span>
+      `).join('');
+
+      // Dynamic duration notice
+      document.getElementById('resModalMaxDurationNotice').textContent = `1회 최대 ${seat.maxHours}시간까지 신청 가능 (${seat.category} 규정)`;
+
+      // Category badge style
+      const catStyle = CATEGORY_STYLES[seat.category] || CATEGORY_STYLES['일반열람실'];
+      document.getElementById('resModalSeatCategory').className = `px-2 py-0.5 text-[11px] font-bold rounded-md ${catStyle.badge}`;
+
+      // Populate Time Select Options with dynamic maxHours restriction
+      populateModalTimeOptions(seatId, defaultStartHour, seat.maxHours);
+
+      // Pre-fill user info if remembered
+      if (appState.userEmail) {
+        document.getElementById('formUserEmail').value = appState.userEmail;
+      }
+
+      // Show Modal
+      document.getElementById('reservationModal').classList.remove('hidden');
+    }
+
+    function populateModalTimeOptions(seatId, preferredStartHour = null, maxHours = 4) {
+      const startSelect = document.getElementById('formStartTime');
+      const endSelect = document.getElementById('formEndTime');
+      const slotsContainer = document.getElementById('modalDayTimeSlots');
+
+      startSelect.innerHTML = '';
+      endSelect.innerHTML = '';
+
+      const seatStatus = getSeatStatus(seatId);
+
+      // Render Visual Time Slot Chips
+      slotsContainer.innerHTML = '';
+      for (let h = OPERATING_HOURS.start; h < OPERATING_HOURS.end; h++) {
+        const isBooked = seatStatus.bookings.some(b => {
+          const s = parseHour(b.startTime);
+          const e = parseHour(b.endTime);
+          return h >= s && h < e;
+        });
+
+        const chip = document.createElement('div');
+        chip.className = `p-1 text-center rounded text-[11px] font-mono font-bold transition-all ${
+          isBooked 
+            ? 'bg-rose-100 text-rose-700 border border-rose-200 cursor-not-allowed' 
+            : 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 cursor-pointer'
+        }`;
+        chip.textContent = `${String(h).padStart(2,'0')}시`;
+        chip.title = `${formatTime(h)} ~ ${formatTime(h+1)}: ${isBooked ? '예약 불가' : '예약 가능'}`;
+
+        if (!isBooked) {
+          chip.addEventListener('click', () => {
+            startSelect.value = formatTime(h);
+            updateEndTimeOptions(h, maxHours);
+            validateSelectedTime();
+          });
+        }
+        slotsContainer.appendChild(chip);
+      }
+
+      // Populate Start Hours (08:00 to 21:00)
+      for (let h = OPERATING_HOURS.start; h < OPERATING_HOURS.end; h++) {
+        const timeVal = formatTime(h);
+        const opt = document.createElement('option');
+        opt.value = timeVal;
+        opt.textContent = timeVal;
+        startSelect.appendChild(opt);
+      }
+
+      // Default start hour selection
+      let selectedStart = preferredStartHour !== null ? preferredStartHour : OPERATING_HOURS.start;
+      
+      const isStartBooked = seatStatus.bookings.some(b => {
+        const s = parseHour(b.startTime);
+        const e = parseHour(b.endTime);
+        return selectedStart >= s && selectedStart < e;
+      });
+
+      if (isStartBooked) {
+        for (let h = OPERATING_HOURS.start; h < OPERATING_HOURS.end; h++) {
+          const booked = seatStatus.bookings.some(b => {
+            const s = parseHour(b.startTime);
+            const e = parseHour(b.endTime);
+            return h >= s && h < e;
+          });
+          if (!booked) {
+            selectedStart = h;
+            break;
+          }
+        }
+      }
+
+      startSelect.value = formatTime(selectedStart);
+      updateEndTimeOptions(selectedStart, maxHours);
+      validateSelectedTime();
+    }
+
+    function updateEndTimeOptions(startHour, maxHours = 4) {
+      const endSelect = document.getElementById('formEndTime');
+      endSelect.innerHTML = '';
+
+      const allowedLimit = maxHours || 4;
+      const maxEnd = Math.min(startHour + allowedLimit, OPERATING_HOURS.end);
+
+      for (let h = startHour + 1; h <= maxEnd; h++) {
+        const timeVal = formatTime(h);
+        const opt = document.createElement('option');
+        opt.value = timeVal;
+        const dur = h - startHour;
+        opt.textContent = `${timeVal} (${dur}시간)`;
+        endSelect.appendChild(opt);
+      }
+
+      // Default duration: 2 hours if allowed, else maxEnd
+      const defaultDuration = Math.min(2, allowedLimit);
+      const defaultEnd = formatTime(Math.min(startHour + defaultDuration, OPERATING_HOURS.end));
+      endSelect.value = defaultEnd;
+    }
+
+    // Time Overlap Real-time Validation Check
+    function validateSelectedTime() {
+      const startVal = document.getElementById('formStartTime').value;
+      const endVal = document.getElementById('formEndTime').value;
+      const warningBanner = document.getElementById('timeOverlapWarning');
+      const warningText = document.getElementById('timeOverlapWarningText');
+      const submitBtn = document.getElementById('btnSubmitReservation');
+      const durationDisplay = document.getElementById('calculatedDuration');
+
+      if (!startVal || !endVal) return;
+
+      const startH = parseHour(startVal);
+      const endH = parseHour(endVal);
+
+      if (endH <= startH) {
+        warningText.textContent = '종료 시간은 시작 시간보다 뒤여야 합니다.';
+        warningBanner.classList.remove('hidden');
+        submitBtn.disabled = true;
+        return;
+      }
+
+      const duration = endH - startH;
+      durationDisplay.textContent = `${duration}시간 이용`;
+
+      // Check collision with confirmed bookings for this seat
+      const currentBookings = appState.reservations.filter(
+        r => r.seatId === appState.currentModalSeat.seatId && r.status !== 'CANCELLED'
+      );
+
+      const overlap = currentBookings.find(r => {
+        return (startVal < r.endTime && endVal > r.startTime);
+      });
+
+      if (overlap) {
+        warningText.innerHTML = `선택하신 시간대 중 <strong>${overlap.startTime} ~ ${overlap.endTime}</strong>에 이미 예약이 존재하여 신청할 수 없습니다.`;
+        warningBanner.classList.remove('hidden');
+        submitBtn.disabled = true;
+      } else {
+        warningBanner.classList.add('hidden');
+        submitBtn.disabled = false;
+      }
+    }
+
+    function closeReservationModal() {
+      document.getElementById('reservationModal').classList.add('hidden');
+      document.getElementById('reservationForm').reset();
+      document.getElementById('timeOverlapWarning').classList.add('hidden');
+      appState.currentModalSeat = null;
+    }
+
+    // Handle Reservation Form Submission
+    async function handleReservationSubmit(e) {
+      e.preventDefault();
+
+      const seatId = document.getElementById('formSeatId').value;
+      const startTime = document.getElementById('formStartTime').value;
+      const endTime = document.getElementById('formEndTime').value;
+      const userName = document.getElementById('formUserName').value.trim();
+      const userEmail = document.getElementById('formUserEmail').value.trim();
+      const userPhone = document.getElementById('formUserPhone').value.trim();
+      const agree = document.getElementById('formAgreeTerms').checked;
+
+      if (!userName || !userEmail || !userPhone) {
+        showToast('필수 예약자 정보를 모두 입력해주세요.', 'warning');
+        return;
+      }
+
+      if (!agree) {
+        showToast('도서관 이용 수칙에 동의해주세요.', 'warning');
+        return;
+      }
+
+      const submitBtn = document.getElementById('btnSubmitReservation');
+      const spinner = document.getElementById('submitBtnSpinner');
+      const btnText = document.getElementById('submitBtnText');
+
+      submitBtn.disabled = true;
+      spinner.classList.remove('hidden');
+      btnText.textContent = '예약 처리 중...';
+
+      const payload = {
+        userName,
+        userEmail,
+        userPhone,
+        seatId,
+        date: appState.selectedDate,
+        startTime,
+        endTime
+      };
+
+      try {
+        const result = await apiCreateReservation(payload);
+
+        // Store user email for next time
+        appState.userEmail = userEmail;
+        localStorage.setItem(STORAGE_KEY_USER_EMAIL, userEmail);
+
+        closeReservationModal();
+        showToast(`🎉 예약이 완료되었습니다! (예약번호: ${result.reservationId})`, 'success', 5000);
+
+        // Refresh current date reservations
+        await loadData();
+
+        // Optionally open My Reservations Modal to show confirmed reservation
+        setTimeout(() => {
+          openMyReservationsModal(userEmail);
+        }, 600);
+
+      } catch (err) {
+        console.error('예약 생성 실패:', err);
+        showToast(`예약 실패: ${err.message || '다시 시도해주세요.'}`, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        spinner.classList.add('hidden');
+        btnText.textContent = '예약 확정하기';
+      }
+    }
+
+    // --- MY RESERVATIONS CONTROLLER ---
+    function openMyReservationsModal(prefilledEmail = null) {
+      const emailInput = document.getElementById('myResEmailInput');
+      const modal = document.getElementById('myReservationsModal');
+
+      if (prefilledEmail) {
+        emailInput.value = prefilledEmail;
+        lookupUserReservations(prefilledEmail);
+      } else if (appState.userEmail) {
+        emailInput.value = appState.userEmail;
+        lookupUserReservations(appState.userEmail);
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeMyReservationsModal() {
+      document.getElementById('myReservationsModal').classList.add('hidden');
+    }
+
+    async function lookupUserReservations(email) {
+      const listContainer = document.getElementById('myResListContent');
+      const btn = document.getElementById('btnLookupMyRes');
+
+      listContainer.innerHTML = `
+        <div class="py-12 text-center">
+          <div class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div>
+          <p class="text-xs text-slate-600 font-medium">예약 내역을 조회하는 중입니다...</p>
+        </div>
+      `;
+
+      try {
+        const reservations = await apiGetUserReservations(email);
+        renderUserReservationsList(reservations);
+      } catch (err) {
+        listContainer.innerHTML = `
+          <div class="py-8 text-center text-rose-500 text-xs">
+            <i class="fa-solid fa-circle-exclamation text-xl mb-1"></i>
+            <p>조회 실패: ${err.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderUserReservationsList(reservations) {
+      const listContainer = document.getElementById('myResListContent');
+
+      if (!reservations || reservations.length === 0) {
+        listContainer.innerHTML = `
+          <div class="py-12 text-center text-slate-400">
+            <i class="fa-regular fa-calendar-xmark text-3xl mb-2 text-slate-300"></i>
+            <p class="text-sm font-semibold text-slate-700">예약 내역이 없습니다</p>
+            <p class="text-xs text-slate-400 mt-1">입력하신 이메일로 등록된 예약이 없습니다.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Sort: active upcoming first, then by date descending
+      const sorted = [...reservations].sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.startTime.localeCompare(a.startTime);
+      });
+
+      const today = getFormattedDate(0);
+
+      listContainer.innerHTML = sorted.map(res => {
+        const seat = appState.seats.find(s => s.seatId === res.seatId) || {
+          name: res.seatId,
+          floor: '위치 정보 없음',
+          category: '좌석'
+        };
+
+        const isCancelled = res.status.toUpperCase() === 'CANCELLED';
+        const isPast = res.date < today;
+        const canCancel = !isCancelled && !isPast;
+        const canCheckIn = !isCancelled && !isPast && (res.checkInStatus === 'Pending' || !res.checkInStatus);
+
+        let statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-800">예약 확정</span>';
+        if (isCancelled) {
+          statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 line-through">취소됨</span>';
+        } else if (isPast) {
+          statusBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-600">이용 완료</span>';
+        }
+
+        // CheckIn Status Badge
+        let checkInBadge = '';
+        if (!isCancelled) {
+          if (res.checkInStatus === 'CheckedIn') {
+            checkInBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1"><i class="fa-solid fa-check text-[9px]"></i>입실 완료</span>';
+          } else if (res.checkInStatus === 'Completed') {
+            checkInBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">퇴실 완료</span>';
+          } else if (res.checkInStatus === 'NoShow') {
+            checkInBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">미입실(노쇼)</span>';
+          } else {
+            checkInBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">입실 대기</span>';
+          }
+        }
+
+        return `
+          <div class="bg-white border ${isCancelled ? 'border-slate-200 opacity-60' : 'border-indigo-100 shadow-xs'} rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-indigo-300 transition-all">
+            
+            <div class="space-y-1.5 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                ${statusBadge}
+                ${checkInBadge}
+                <span class="font-bold text-slate-900 text-sm">${seat.name}</span>
+                <span class="text-xs font-mono text-slate-400">(${res.seatId})</span>
+                <span class="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                  <i class="fa-solid fa-location-dot text-indigo-500 text-[10px]"></i>${seat.floor}
+                </span>
+              </div>
+              
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                <span><i class="fa-regular fa-calendar text-indigo-500 mr-1"></i>${res.date}</span>
+                <span><i class="fa-regular fa-clock text-indigo-500 mr-1"></i>${res.startTime} ~ ${res.endTime}</span>
+                <span><i class="fa-regular fa-user text-slate-400 mr-1"></i>${res.userName}</span>
+                ${res.userPhone ? `<span><i class="fa-solid fa-phone text-slate-400 mr-1"></i>${res.userPhone}</span>` : ''}
+              </div>
+
+              <div class="flex items-center gap-3 text-[11px] font-mono text-slate-400 pt-0.5">
+                <span>예약번호: ${res.reservationId}</span>
+                ${res.createdAt ? `<span>· 신청일시: ${res.createdAt}</span>` : ''}
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex sm:flex-col items-center sm:items-end gap-2 shrink-0">
+              ${canCheckIn ? `
+                <button 
+                  type="button" 
+                  onclick="handleCheckIn('${res.reservationId}', '${res.userEmail}')"
+                  class="px-3 py-1.5 text-xs font-bold text-emerald-700 hover:text-white bg-emerald-50 hover:bg-emerald-600 rounded-lg border border-emerald-300 hover:border-transparent transition-all flex items-center gap-1 shadow-2xs"
+                  title="좌석 이용 시작 시 클릭"
+                >
+                  <i class="fa-solid fa-qrcode text-[11px]"></i>
+                  <span>입실 확인</span>
+                </button>
+              ` : ''}
+
+              ${canCancel ? `
+                <button 
+                  type="button" 
+                  onclick="promptCancelReservation('${res.reservationId}', '${res.userEmail}', '${seat.name}', '${res.date}', '${res.startTime}~${res.endTime}')"
+                  class="px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 rounded-lg border border-rose-200 hover:border-transparent transition-all flex items-center gap-1"
+                >
+                  <i class="fa-solid fa-trash-can text-[11px]"></i>
+                  <span>예약 취소</span>
+                </button>
+              ` : ''}
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function handleCheckIn(reservationId, userEmail) {
+      try {
+        showToast('입실 확인 처리 중입니다...', 'info', 1500);
+        await apiCheckInReservation(reservationId, userEmail);
+        showToast('✅ 입실 확인이 완료되었습니다! 안전하고 쾌적하게 이용해주세요.', 'success', 4000);
+        lookupUserReservations(userEmail);
+      } catch (err) {
+        showToast(`입실 확인 실패: ${err.message}`, 'error');
+      }
+    }
+
+    // --- CANCELLATION PROMPT MODAL CONTROLLER (NO NATIVE CONFIRM) ---
+    function promptCancelReservation(reservationId, userEmail, seatName, date, timeRange) {
+      appState.pendingCancelReservation = { reservationId, userEmail };
+
+      const detailsContainer = document.getElementById('cancelTargetDetails');
+      detailsContainer.innerHTML = `
+        <div class="flex justify-between"><span class="text-slate-500">예약 번호:</span><strong class="font-mono">${reservationId}</strong></div>
+        <div class="flex justify-between"><span class="text-slate-500">좌석명:</span><strong>${seatName}</strong></div>
+        <div class="flex justify-between"><span class="text-slate-500">일시:</span><strong>${date} (${timeRange})</strong></div>
+        <div class="flex justify-between"><span class="text-slate-500">예약 이메일:</span><span>${userEmail}</span></div>
+      `;
+
+      document.getElementById('confirmCancelModal').classList.remove('hidden');
+    }
+
+    function dismissCancelModal() {
+      document.getElementById('confirmCancelModal').classList.add('hidden');
+      appState.pendingCancelReservation = null;
+    }
+
+    async function executeCancelReservation() {
+      if (!appState.pendingCancelReservation) return;
+
+      const { reservationId, userEmail } = appState.pendingCancelReservation;
+      const btn = document.getElementById('btnConfirmCancelModal');
+      const spinner = document.getElementById('cancelSpinner');
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        await apiCancelReservation(reservationId, userEmail);
+        showToast('예약이 성공적으로 취소되었습니다.', 'success');
+        dismissCancelModal();
+
+        // Refresh My Reservations List
+        lookupUserReservations(userEmail);
+
+        // Refresh Seat Grid
+        await loadData();
+      } catch (err) {
+        showToast(`취소 실패: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // --- PHONE NUMBER AUTO-FORMATTING ---
+    function formatPhoneNumber(input) {
+      let val = input.value.replace(/[^0-9]/g, '');
+      if (val.length > 11) val = val.substring(0, 11);
+      
+      let formatted = val;
+      if (val.length > 7) {
+        formatted = `${val.substring(0, 3)}-${val.substring(3, 7)}-${val.substring(7)}`;
+      } else if (val.length > 3) {
+        formatted = `${val.substring(0, 3)}-${val.substring(3)}`;
+      }
+      input.value = formatted;
+    }
+
+    // Expose functions globally for inline HTML onclick handlers
+    window.openReservationModal = openReservationModal;
+    window.promptCancelReservation = promptCancelReservation;
+    window.handleCheckIn = handleCheckIn;
+
+    // --- EVENT LISTENERS & INITIALIZATION ---
+    document.addEventListener('DOMContentLoaded', () => {
+
+      // Date Picker Init
+      const dateInput = document.getElementById('selectedDateInput');
+      dateInput.value = appState.selectedDate;
+      dateInput.min = getFormattedDate(0); // cannot book past days
+
+      dateInput.addEventListener('change', (e) => {
+        appState.selectedDate = e.target.value;
+        loadData();
+      });
+
+      // Quick Date Buttons
+      document.querySelectorAll('.quick-date-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.quick-date-btn').forEach(b => {
+            b.className = 'quick-date-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:text-slate-900 transition-all';
+          });
+          btn.className = 'quick-date-btn px-2.5 py-1 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition-all';
+          
+          const offset = parseInt(btn.dataset.offset, 10);
+          appState.selectedDate = getFormattedDate(offset);
+          dateInput.value = appState.selectedDate;
+          loadData();
+        });
+      });
+
+      // Category Tabs
+      document.querySelectorAll('.category-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.category-tab').forEach(t => {
+            t.className = 'category-tab px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap';
+          });
+          tab.className = 'category-tab active px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-indigo-600 text-white shadow-xs transition-all whitespace-nowrap';
+
+          appState.selectedCategory = tab.dataset.category;
+          renderSeats();
+        });
+      });
+
+      // Floor Tabs
+      document.querySelectorAll('.floor-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.floor-tab').forEach(t => {
+            t.className = 'floor-tab px-2.5 py-1 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition-all whitespace-nowrap';
+          });
+          tab.className = 'floor-tab active px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-xs transition-all whitespace-nowrap';
+
+          appState.selectedFloor = tab.dataset.floor;
+          renderSeats();
+        });
+      });
+
+      // Search Input
+      document.getElementById('seatSearchInput').addEventListener('input', (e) => {
+        appState.searchQuery = e.target.value;
+        renderSeats();
+      });
+
+      // Filter Available Only Checkbox
+      document.getElementById('filterAvailableOnly').addEventListener('change', (e) => {
+        appState.availableOnly = e.target.checked;
+        renderSeats();
+      });
+
+      // View Mode Switches
+      const btnViewGrid = document.getElementById('btnViewGrid');
+      const btnViewTimeline = document.getElementById('btnViewTimeline');
+
+      btnViewGrid.addEventListener('click', () => {
+        appState.viewMode = 'grid';
+        btnViewGrid.className = 'p-1.5 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition-all';
+        btnViewTimeline.className = 'p-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-900 transition-all';
+        renderSeats();
+      });
+
+      btnViewTimeline.addEventListener('click', () => {
+        appState.viewMode = 'timeline';
+        btnViewTimeline.className = 'p-1.5 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition-all';
+        btnViewGrid.className = 'p-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-900 transition-all';
+        renderSeats();
+      });
+
+      // Reset Filter Button
+      document.getElementById('btnResetFilters').addEventListener('click', () => {
+        appState.searchQuery = '';
+        appState.availableOnly = false;
+        appState.selectedCategory = 'ALL';
+        appState.selectedFloor = 'ALL';
+        document.getElementById('seatSearchInput').value = '';
+        document.getElementById('filterAvailableOnly').checked = false;
+        document.querySelector('.category-tab[data-category="ALL"]').click();
+        const firstFloorTab = document.querySelector('.floor-tab[data-floor="ALL"]');
+        if (firstFloorTab) firstFloorTab.click();
+      });
+
+      // Refresh Button
+      document.getElementById('btnRefresh').addEventListener('click', () => {
+        loadData();
+        showToast('데이터를 새로고침했습니다.', 'info');
+      });
+
+      // Reservation Modal Interactions
+      document.querySelectorAll('.modal-close-btn').forEach(btn => {
+        btn.addEventListener('click', closeReservationModal);
+      });
+
+      document.getElementById('reservationForm').addEventListener('submit', handleReservationSubmit);
+
+      document.getElementById('formStartTime').addEventListener('change', (e) => {
+        const startH = parseHour(e.target.value);
+        updateEndTimeOptions(startH);
+        validateSelectedTime();
+      });
+
+      document.getElementById('formEndTime').addEventListener('change', () => {
+        validateSelectedTime();
+      });
+
+      // Phone Input Formatter
+      document.getElementById('formUserPhone').addEventListener('input', (e) => {
+        formatPhoneNumber(e.target);
+      });
+
+      // My Reservations Modal
+      document.getElementById('btnOpenMyReservations').addEventListener('click', () => {
+        openMyReservationsModal();
+      });
+
+      document.querySelectorAll('.my-res-close-btn').forEach(btn => {
+        btn.addEventListener('click', closeMyReservationsModal);
+      });
+
+      document.getElementById('myResLookupForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = document.getElementById('myResEmailInput').value.trim();
+        if (email) {
+          appState.userEmail = email;
+          localStorage.setItem(STORAGE_KEY_USER_EMAIL, email);
+          updateSystemModeUI();
+          lookupUserReservations(email);
+        }
+      });
+
+      document.getElementById('btnQuickSelectStoredEmail').addEventListener('click', () => {
+        if (appState.userEmail) {
+          document.getElementById('myResEmailInput').value = appState.userEmail;
+          lookupUserReservations(appState.userEmail);
+        }
+      });
+
+      // Cancel Confirmation Modal
+      document.getElementById('btnDismissCancelModal').addEventListener('click', dismissCancelModal);
+      document.getElementById('btnConfirmCancelModal').addEventListener('click', executeCancelReservation);
+
+      // GAS API Settings Modal
+      const settingsModal = document.getElementById('settingsModal');
+      document.getElementById('btnOpenSettings').addEventListener('click', () => {
+        document.getElementById('gasApiUrlInput').value = appState.gasUrl;
+        settingsModal.classList.remove('hidden');
+      });
+
+      document.querySelectorAll('.settings-close-btn').forEach(btn => {
+        btn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+      });
+
+      document.getElementById('btnSaveGasUrl').addEventListener('click', () => {
+        const url = document.getElementById('gasApiUrlInput').value.trim();
+        appState.gasUrl = url;
+        if (url) {
+          localStorage.setItem(STORAGE_KEY_GAS_URL, url);
+          showToast('GAS Web App URL이 저장되었습니다.', 'success');
+        } else {
+          localStorage.removeItem(STORAGE_KEY_GAS_URL);
+          showToast('데모 모드로 전환되었습니다.', 'info');
+        }
+        settingsModal.classList.add('hidden');
+        loadData();
+      });
+
+      document.getElementById('btnResetToDemo').addEventListener('click', () => {
+        document.getElementById('gasApiUrlInput').value = '';
+        appState.gasUrl = '';
+        localStorage.removeItem(STORAGE_KEY_GAS_URL);
+        showToast('스마트 데모 모드로 설정되었습니다.', 'info');
+        settingsModal.classList.add('hidden');
+        loadData();
+      });
+
+      document.getElementById('btnTestGasConnection').addEventListener('click', async () => {
+        const testUrl = document.getElementById('gasApiUrlInput').value.trim();
+        if (!testUrl) {
+          showToast('테스트할 GAS URL을 먼저 입력해주세요.', 'warning');
+          return;
+        }
+
+        showToast('GAS 연결 테스트 중...', 'info', 1500);
+        try {
+          const res = await fetch(`${testUrl}?action=getSeats`, { method: 'GET' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) {
+              showToast('✅ Google Apps Script Web App과 성공적으로 연결되었습니다!', 'success', 4000);
+              return;
+            }
+          }
+          throw new Error('응답 형식 불일치');
+        } catch (err) {
+          showToast('연결 실패: 웹 앱 배포 권한([모든 사용자]) 및 URL을 확인해주세요.', 'error', 4500);
+        }
+      });
+
+      // GAS Code Guide Modal
+      const gasGuideModal = document.getElementById('gasGuideModal');
+      document.getElementById('btnOpenGasGuide').addEventListener('click', () => {
+        gasGuideModal.classList.remove('hidden');
+      });
+
+      document.querySelectorAll('.guide-close-btn').forEach(btn => {
+        btn.addEventListener('click', () => gasGuideModal.classList.add('hidden'));
+      });
+
+      document.getElementById('btnCopyGasCode').addEventListener('click', () => {
+        const codeText = document.getElementById('gasSourceCodeBlock').innerText;
+        navigator.clipboard.writeText(codeText).then(() => {
+          const copyBtnText = document.getElementById('copyBtnText');
+          copyBtnText.textContent = '복사 완료!';
+          showToast('GAS 소스코드가 클립보드에 복사되었습니다.', 'success');
+          setTimeout(() => {
+            copyBtnText.textContent = 'Code.gs 코드 복사';
+          }, 2000);
+        }).catch(() => {
+          showToast('클립보드 복사 권한이 없습니다.', 'error');
+        });
+      });
+
+      document.getElementById('btnCopyEntireHtml').addEventListener('click', () => {
+        const fullHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        navigator.clipboard.writeText(fullHtml).then(() => {
+          const btnText = document.getElementById('copyHtmlBtnText');
+          btnText.textContent = 'HTML 복사 완료!';
+          showToast('Index.html용 전체 소스코드가 복사되었습니다. GAS의 Index 파일에 붙여넣으세요.', 'success', 4000);
+          setTimeout(() => {
+            btnText.textContent = '전체 HTML 복사 (GAS Index.html용)';
+          }, 2500);
+        }).catch(() => {
+          showToast('클립보드 복사 권한이 없습니다.', 'error');
+        });
+      });
+
+      // Initial Data Fetch
+      loadData();
+    });
+  </script>
+
+</body>
+</html>
